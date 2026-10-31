@@ -1,0 +1,38 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Środowiska ---
+.venv/
+venv/
+env/
+.env
+
+# --- Jupyter ---
+.ipynb_checkpoints/
+
+# --- Edytory / system ---
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# --- Dane (nigdy do GitHuba) ---
+data/
+*.zip
+*.tar
+*.tar.gz
+*.7z
+
+# --- Checkpointy modeli i duże wyniki ---
+checkpoints/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+outputs/
+runs/
+wandb/
+lightning_logs/

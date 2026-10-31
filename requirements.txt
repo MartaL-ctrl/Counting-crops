@@ -1,0 +1,12 @@
+# Biblioteki do wczytania i obejrzenia danych (etap 1: inspekcja).
+# Wersje celowo nieprzypięte na tym etapie - po instalacji można je zapisać
+# poleceniem: python -m pip freeze > requirements-lock.txt
+#
+# PyTorch NIE jest tutaj dodany - instaluje się go osobno, komendą z
+# https://pytorch.org/get-started/locally/ dobraną do systemu i karty GPU.
+numpy
+pandas
+Pillow
+matplotlib
+jupyter
+ipykernel
