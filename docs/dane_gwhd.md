@@ -14,6 +14,7 @@ z publikacji. Liczby z publikacji podano osobno, do porównania.
 | Wersja | 1.0 (wg karty zbioru: „Published: July 12, 2021, Version 1.0”) |
 | Wykorzystana kopia | Hugging Face, organizacja **GlobalWheat**: https://huggingface.co/datasets/GlobalWheat/GWHD_2021 |
 | Format kopii | 4 pliki Apache Parquet (`data/train-00000-of-00002`, `train-00001-of-00002`, `validation-00000-of-00001`, `test-00000-of-00001`), razem 1,26 GB |
+| Wersja repozytorium HF | commit `976d2f12ca59bff731d3e54713d77bf9aa3bca03` (ostatnia zmiana 2026-10-20); ta sama wersja jest przypięta w `notebooks/colab_train.ipynb` |
 | Data pobrania | 2026-11-02; sumy SHA256 wszystkich plików zgodne z deklarowanymi przez Hugging Face |
 | Wydanie oryginalne | Zenodo, rekord 5092309 (DOI 10.5281/zenodo.5092309), plik `gwhd_2021.zip` (10,2 GB) – **nieużywane** |
 | Licencja | CC BY 4.0 |

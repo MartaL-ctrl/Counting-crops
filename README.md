@@ -100,3 +100,11 @@ Parametry eksperymentu są w plikach `configs/*.yaml`. Wyniki trafiają do `outp
 `best.pt` (najlepsze val MAE), `config.yaml`, `subsets.json`.
 
 `configs/smoke.yaml` to tylko test działania kodu (32 obrazy) - jego wyników nie raportujemy.
+
+## Trening w Google Colab
+
+Otwórz `notebooks/colab_train.ipynb` w Colabie (link „Open in Colab” na górze notebooka),
+ustaw GPU i uruchom wszystko. Notebook pobiera kod z GitHuba, dane trzyma na Dysku Google
+(`MyDrive/counting-crops/data/`), a wyniki zapisuje do `MyDrive/counting-crops/outputs/`.
+Po rozłączeniu sesji wystarczy uruchomić wszystko ponownie - trening wznowi się od `last.pt`.
+Konfiguracje dla Colaba: `configs/colab_*.yaml`.
