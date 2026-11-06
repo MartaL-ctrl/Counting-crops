@@ -2,11 +2,13 @@
 # Wersje celowo nieprzypięte na tym etapie - po instalacji można je zapisać
 # poleceniem: python -m pip freeze > requirements-lock.txt
 #
-# PyTorch NIE jest tutaj dodany - instaluje się go osobno, komendą z
-# https://pytorch.org/get-started/locally/ dobraną do systemu i karty GPU.
+# PyTorch NIE jest tutaj dodany - instaluje się go osobno (komenda w README),
+# bo wariant zależy od karty GPU, a Colab ma własny, preinstalowany PyTorch.
 numpy
 pandas
+pyarrow
 Pillow
 matplotlib
+pyyaml
 jupyter
 ipykernel

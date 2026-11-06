@@ -1,0 +1,29 @@
+# Mały trening testowy (smoke test): czy pipeline działa od danych do checkpointu
+# i czy model potrafi dopasować się do kilku obrazów. NIE służy do raportowania wyników.
+
+run_name: smoke
+seed: 42
+
+# Ścieżki względne liczone od katalogu repozytorium; w Colabie można podać ścieżki absolutne
+# (np. /content/drive/MyDrive/counting-crops/outputs).
+data_dir: data/raw/gwhd_hf
+output_dir: outputs
+
+# Mapy gęstości
+sigma: 10.0          # [px] stała szerokość jądra Gaussa (hipoteza)
+downsample: 8        # CSRNet zwraca mapę 8x mniejszą od obrazu
+density_scale: 100.0 # cel = mapa * density_scale; liczba = suma wyjścia / density_scale
+
+# Dane
+crop_size: 256       # losowy wycinek w treningu; walidacja na całych obrazach 1024x1024
+n_train: 32          # liczba losowych obrazów z train (null = wszystkie)
+n_val: 16            # liczba losowych obrazów z validation (null = wszystkie)
+eval_train: true     # dodatkowo MAE na obrazach treningowych - kontrola dopasowania
+
+# Trening
+epochs: 40
+eval_every: 10       # walidacja co N epok (i zawsze w ostatniej)
+batch_size: 4
+lr: 1.0e-5
+weight_decay: 0.0
+num_workers: 0       # na Windows 0 (patrz docstring GWHDDensityDataset)
