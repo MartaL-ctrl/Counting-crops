@@ -6,7 +6,7 @@ seed: 42
 
 # Ścieżki względne liczone od katalogu repozytorium; w Colabie można podać ścieżki absolutne
 # (np. /content/drive/MyDrive/counting-crops/outputs).
-data_dir: data/raw/gwhd_hf
+data_zip: data/raw/zenodo/gwhd_2021.zip   # oryginalne wydanie z Zenodo (nie rozpakowujemy)
 output_dir: outputs
 
 # Mapy gęstości

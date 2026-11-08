@@ -11,13 +11,13 @@ Counting-crops/
 ├── src/
 │   ├── utils.py      # seed, metryki MAE/RMSE, checkpointy
 │   ├── density.py    # ramki -> punkty -> mapy gęstości
-│   ├── dataset.py    # Dataset PyTorch dla plików parquet GWHD
+│   ├── dataset.py    # Dataset PyTorch: CSV i obrazy z archiwum ZIP GWHD 2021
 │   └── model.py      # CSRNet
 ├── configs/          # parametry eksperymentów (YAML)
 ├── train.py          # trening z checkpointami i wznawianiem
 ├── notebooks/        # nauka, eksploracja, testy
 ├── data/             # dane lokalne - NIE trafiają do Gita
-│   └── raw/gwhd_hf/  # pliki *.parquet
+│   └── raw/zenodo/gwhd_2021.zip
 ├── outputs/          # wyniki treningów - NIE trafiają do Gita
 ├── requirements.txt
 └── README.md
@@ -65,18 +65,16 @@ W Google Colab PyTorch jest już zainstalowany - nie instaluj go ponownie.
 
 ## Dane
 
-Danych nie ma w repozytorium. Źródło: GWHD 2021 w formacie parquet z Hugging Face,
-https://huggingface.co/datasets/GlobalWheat/GWHD_2021 (wersja 1.0, ta sama co na Zenodo 5092309).
-Cztery pliki z folderu `data/` (razem ok. 1,26 GB) umieść w:
+Danych nie ma w repozytorium. Źródło: oryginalne wydanie GWHD 2021 z Zenodo,
+https://zenodo.org/records/5092309 (DOI 10.5281/zenodo.5092309, wersja 1.0, CC BY 4.0).
+Plik `gwhd_2021.zip` (10,2 GB, MD5 `22b4b542c9ae7e056d7fcdeae9ecaed5`) umieść **bez rozpakowywania** w:
 
 ```
-data/raw/gwhd_hf/
+data/raw/zenodo/gwhd_2021.zip
 ```
 
-Ważne: ramki w tych plikach mają format `[x, y, szerokość, wysokość]`, wbrew opisowi
-na Hugging Face (`[x_min, y_min, x_max, y_max]`). Sprawdzone na całym zbiorze walidacyjnym.
-
-Inną lokalizację danych ustawia się polem `data_dir` w pliku konfiguracyjnym.
+Kod czyta obrazy i pliki CSV bezpośrednio z archiwum. Inną lokalizację ustawia się polem `data_zip`
+w pliku konfiguracyjnym. Opis danych, wykryte błędy wydania i sposób ich obsługi: `docs/dane_gwhd.md`.
 
 ## Uruchomienie notebooka
 
@@ -104,7 +102,8 @@ Parametry eksperymentu są w plikach `configs/*.yaml`. Wyniki trafiają do `outp
 ## Trening w Google Colab
 
 Otwórz `notebooks/colab_train.ipynb` w Colabie (link „Open in Colab” na górze notebooka),
-ustaw GPU i uruchom wszystko. Notebook pobiera kod z GitHuba, dane trzyma na Dysku Google
-(`MyDrive/counting-crops/data/`), a wyniki zapisuje do `MyDrive/counting-crops/outputs/`.
+ustaw GPU i uruchom wszystko. Notebook pobiera kod z GitHuba, archiwum z Zenodo na dysk Colaba
+(w każdej sesji; opcjonalnie trzyma kopię na Dysku Google, ale zajmuje ona 10,2 GB),
+a wyniki zapisuje do `MyDrive/counting-crops/outputs/`.
 Po rozłączeniu sesji wystarczy uruchomić wszystko ponownie - trening wznowi się od `last.pt`.
 Konfiguracje dla Colaba: `configs/colab_*.yaml`.

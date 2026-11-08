@@ -5,9 +5,9 @@
 run_name: colab_smoke
 seed: 42
 
-# Dane kopiowane przez notebook na lokalny dysk Colaba (szybki odczyt);
+# Archiwum z Zenodo na lokalnym dysku Colaba (szybki odczyt; notebook je pobiera lub kopiuje);
 # wyniki na Dysku Google (przetrwają rozłączenie sesji).
-data_dir: /content/data/gwhd_hf
+data_zip: /content/data/gwhd_2021.zip
 output_dir: /content/drive/MyDrive/counting-crops/outputs
 
 # Mapy gęstości

@@ -1,7 +1,7 @@
 """Punkty obiektów i mapy gęstości (jądro Gaussa o stałej sigmie).
 
 Konwencje:
-- ramki w formacie GWHD z Hugging Face: ``[x, y, w, h]`` w pikselach (lewy górny róg + rozmiar),
+- ramki w formacie oryginalnego GWHD 2021 (Zenodo): ``[x_min, y_min, x_max, y_max]`` w pikselach,
 - punkty: tablica ``(N, 2)`` z kolumnami ``[x, y]`` (x = kolumna, y = wiersz),
 - mapy: tablice ``(H, W)`` typu float32; każdy punkt wnosi do sumy mapy dokładnie 1.
 """
@@ -11,13 +11,27 @@ from __future__ import annotations
 import numpy as np
 
 
-def boxes_to_points(boxes: np.ndarray) -> np.ndarray:
-    """Zamienia ramki ``(N, 4)`` ``[x, y, w, h]`` na środki ``(N, 2)`` ``[cx, cy]``.
+def clip_boxes(boxes: np.ndarray, width: int, height: int) -> np.ndarray:
+    """Przycina ramki ``(N, 4)`` xyxy do obrazu i usuwa te, z których nic nie zostało.
 
-    Założenie: środek ramki reprezentuje położenie kłosa.
+    W GWHD 2021 część ramek (domena CIMMYT_3) wychodzi poza obraz 1024x1024;
+    ramka leżąca całkowicie poza obrazem ma po przycięciu zerowe pole i jest odrzucana.
+    """
+    boxes = np.asarray(boxes, dtype=np.float32).reshape(-1, 4).copy()
+    boxes[:, [0, 2]] = boxes[:, [0, 2]].clip(0, width)
+    boxes[:, [1, 3]] = boxes[:, [1, 3]].clip(0, height)
+    keep = (boxes[:, 2] > boxes[:, 0]) & (boxes[:, 3] > boxes[:, 1])
+    return boxes[keep]
+
+
+def boxes_to_points(boxes: np.ndarray) -> np.ndarray:
+    """Zamienia ramki ``(N, 4)`` xyxy na środki ``(N, 2)`` ``[cx, cy]``.
+
+    Założenie: środek ramki reprezentuje położenie kłosa. Dla ramek przyciętych przez
+    ``clip_boxes`` środek leży zawsze wewnątrz obrazu.
     """
     boxes = np.asarray(boxes, dtype=np.float32).reshape(-1, 4)
-    return np.stack([boxes[:, 0] + boxes[:, 2] / 2, boxes[:, 1] + boxes[:, 3] / 2], axis=1)
+    return np.stack([(boxes[:, 0] + boxes[:, 2]) / 2, (boxes[:, 1] + boxes[:, 3]) / 2], axis=1)
 
 
 def gaussian_kernel(sigma: float, truncate: float = 3.0) -> np.ndarray:

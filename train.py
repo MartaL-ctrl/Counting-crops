@@ -22,13 +22,12 @@ import time
 from pathlib import Path
 
 import numpy as np
-import pyarrow.parquet as pq
 import torch
 import torch.nn.functional as F
 import yaml
 from torch.utils.data import DataLoader
 
-from src.dataset import GWHDDensityDataset, split_files
+from src.dataset import GWHDDensityDataset, load_split
 from src.model import CSRNet
 from src.utils import (
     count_metrics,
@@ -50,9 +49,8 @@ def resolve(path: str | Path) -> Path:
     return path if path.is_absolute() else ROOT / path
 
 
-def pick_indices(files: list[Path], n: int | None, rng: np.random.Generator) -> list[int]:
+def pick_indices(total: int, n: int | None, rng: np.random.Generator) -> list[int]:
     """Losowy (powtarzalny) podzbiór numerów obrazów; ``None`` = wszystkie."""
-    total = sum(pq.ParquetFile(f).metadata.num_rows for f in files)
     if n is None or n >= total:
         return list(range(total))
     return sorted(rng.choice(total, size=n, replace=False).tolist())
@@ -119,17 +117,16 @@ def main() -> None:
     scale = float(cfg["density_scale"])
 
     # --- dane ---
-    data_dir = resolve(cfg["data_dir"])
-    train_files, val_files = split_files(data_dir, "train"), split_files(data_dir, "validation")
+    data_zip = resolve(cfg["data_zip"])
     rng = np.random.default_rng(cfg["seed"])
-    train_idx = pick_indices(train_files, cfg["n_train"], rng)
-    val_idx = pick_indices(val_files, cfg["n_val"], rng)
+    train_idx = pick_indices(len(load_split(data_zip, "train")), cfg["n_train"], rng)
+    val_idx = pick_indices(len(load_split(data_zip, "validation")), cfg["n_val"], rng)
     (out_dir / "subsets.json").write_text(json.dumps({"train": train_idx, "validation": val_idx}))
 
-    common = {"sigma": cfg["sigma"], "downsample": cfg["downsample"]}
-    train_ds = GWHDDensityDataset(train_files, crop_size=cfg["crop_size"], indices=train_idx, **common)
-    val_ds = GWHDDensityDataset(val_files, crop_size=None, indices=val_idx, **common)
-    train_eval_ds = (GWHDDensityDataset(train_files, crop_size=None, indices=train_idx, **common)
+    common = {"zip_path": data_zip, "sigma": cfg["sigma"], "downsample": cfg["downsample"]}
+    train_ds = GWHDDensityDataset(split="train", crop_size=cfg["crop_size"], indices=train_idx, **common)
+    val_ds = GWHDDensityDataset(split="validation", crop_size=None, indices=val_idx, **common)
+    train_eval_ds = (GWHDDensityDataset(split="train", crop_size=None, indices=train_idx, **common)
                      if cfg.get("eval_train") else None)
 
     loader_gen = torch.Generator().manual_seed(cfg["seed"])
