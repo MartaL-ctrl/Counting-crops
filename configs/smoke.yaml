@@ -16,6 +16,7 @@ density_scale: 100.0 # cel = mapa * density_scale; liczba = suma wyjścia / dens
 
 # Dane
 crop_size: 256       # losowy wycinek w treningu; walidacja na całych obrazach 1024x1024
+augmentation: crop_only  # crop_only | thesis_aug (src/dataset.py: AUGMENTATION_PROFILES); tylko train
 n_train: 32          # liczba losowych obrazów z train (null = wszystkie)
 n_val: 16            # liczba losowych obrazów z validation (null = wszystkie)
 eval_train: true     # dodatkowo MAE na obrazach treningowych - kontrola dopasowania

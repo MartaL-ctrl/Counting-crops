@@ -124,7 +124,9 @@ def main() -> None:
     (out_dir / "subsets.json").write_text(json.dumps({"train": train_idx, "validation": val_idx}))
 
     common = {"zip_path": data_zip, "sigma": cfg["sigma"], "downsample": cfg["downsample"]}
-    train_ds = GWHDDensityDataset(split="train", crop_size=cfg["crop_size"], indices=train_idx, **common)
+    # brak klucza w starszych konfiguracjach = dotychczasowe zachowanie (sam losowy wycinek)
+    train_ds = GWHDDensityDataset(split="train", crop_size=cfg["crop_size"], indices=train_idx,
+                                  augmentation=cfg.get("augmentation", "crop_only"), **common)
     val_ds = GWHDDensityDataset(split="validation", crop_size=None, indices=val_idx, **common)
     train_eval_ds = (GWHDDensityDataset(split="train", crop_size=None, indices=train_idx, **common)
                      if cfg.get("eval_train") else None)

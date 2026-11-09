@@ -17,6 +17,7 @@ density_scale: 100.0
 
 # Dane
 crop_size: 256
+augmentation: crop_only  # crop_only | thesis_aug (src/dataset.py: AUGMENTATION_PROFILES); tylko train
 n_train: 32
 n_val: 16
 eval_train: true

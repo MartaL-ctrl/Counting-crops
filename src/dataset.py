@@ -23,6 +23,14 @@ ZIP_ROOT = "gwhd_2021/"
 SPLIT_CSV = {"train": "competition_train.csv", "validation": "competition_val.csv", "test": "competition_test.csv"}
 IMAGE_SIZE = 1024  # wszystkie obrazy GWHD 2021 mają 1024x1024 (sprawdzone dla 6515 plików)
 
+# Profile augmentacji stosowane PO losowym wycinku (wycinek ustawia osobno crop_size).
+# hflip_p - prawdopodobieństwo odbicia w poziomie; brightness/contrast - maksymalna względna
+# zmiana (0.15 = mnożnik losowany jednostajnie z [0.85, 1.15]).
+AUGMENTATION_PROFILES = {
+    "crop_only": {"hflip_p": 0.0, "brightness": 0.0, "contrast": 0.0},
+    "thesis_aug": {"hflip_p": 0.5, "brightness": 0.15, "contrast": 0.15},
+}
+
 # W CSV trzy nazwy plików występują dwukrotnie (w dwóch domenach, z różnymi ramkami), a w ZIP
 # są trzy pliki, do których nie odwołuje się żaden wiersz. Przypisanie ustalono wzrokowo
 # (ramki pasują do kłosów tylko na jednym z obrazów) - szczegóły w docs/dane_gwhd.md.
@@ -67,8 +75,14 @@ def load_split(zip_path: str | Path, split: str) -> pd.DataFrame:
 class GWHDDensityDataset(Dataset):
     """Próbki: obraz (znormalizowany tensor), mapa gęstości i liczba kłosów.
 
-    Tryb treningowy (``crop_size`` podany): losowy wycinek ``crop_size x crop_size``.
-    Tryb ewaluacji (``crop_size=None``): cały obraz 1024x1024.
+    Tryb treningowy (``crop_size`` podany): losowy wycinek ``crop_size x crop_size``,
+    a potem przekształcenia z profilu ``augmentation`` (``AUGMENTATION_PROFILES``).
+    Tryb ewaluacji (``crop_size=None``): cały obraz 1024x1024, bez augmentacji.
+
+    Odbicie w poziomie jest wykonywane na obrazie i na gotowej mapie gęstości. Jest to
+    równoważne liczeniu mapy z odbitych punktów (jądro Gaussa jest symetryczne), a nie
+    wymaga przeliczania współrzędnych na granicach pikseli. Jasność i kontrast zmieniają
+    tylko obraz.
 
     Mapa gęstości jest liczona z punktów leżących w wycinku, więc jej suma jest
     dokładnie równa liczbie kłosów w wycinku (``count``). Mapa ma rozdzielczość
@@ -87,9 +101,14 @@ class GWHDDensityDataset(Dataset):
         crop_size: int | None = None,
         downsample: int = 8,
         indices: Sequence[int] | None = None,
+        augmentation: str = "crop_only",
     ) -> None:
         if crop_size is not None and crop_size % downsample:
             raise ValueError(f"crop_size={crop_size} musi być podzielny przez downsample={downsample}")
+        if augmentation not in AUGMENTATION_PROFILES:
+            raise ValueError(f"nieznany profil augmentacji {augmentation!r}; dostępne: {list(AUGMENTATION_PROFILES)}")
+        if crop_size is None and augmentation != "crop_only":
+            raise ValueError("augmentacja tylko w trybie treningowym (crop_size podany); ewaluacja: crop_only")
         df = load_split(zip_path, split)
         # numery obrazów w całym podziale (stabilne identyfikatory do zapisu predykcji)
         self.source_indices: list[int] = list(indices) if indices is not None else list(range(len(df)))
@@ -102,6 +121,8 @@ class GWHDDensityDataset(Dataset):
         self.sigma = sigma
         self.crop_size = crop_size
         self.downsample = downsample
+        self.augmentation = augmentation
+        self.aug = AUGMENTATION_PROFILES[augmentation]
         self.mean = torch.tensor(IMAGENET_MEAN).view(3, 1, 1)
         self.std = torch.tensor(IMAGENET_STD).view(3, 1, 1)
         self._zip: zipfile.ZipFile | None = None
@@ -147,11 +168,25 @@ class GWHDDensityDataset(Dataset):
 
         density = downsample_density(density_map(points, h, w, self.sigma), self.downsample)
 
+        # Losowania tylko dla włączonych przekształceń: crop_only zużywa liczby losowe tak
+        # samo jak kod sprzed dodania profili, więc daje identyczne wycinki.
+        if self.aug["hflip_p"] > 0 and np.random.rand() < self.aug["hflip_p"]:
+            img = img[:, ::-1]
+            density = density[:, ::-1]  # mapa (H/ds, W/ds): odbicie po szerokości
+
         image = torch.from_numpy(img.copy()).permute(2, 0, 1).float() / 255.0  # (3, H, W), 0..1
+        if self.aug["brightness"] > 0:
+            b = self.aug["brightness"]
+            image = (image * np.random.uniform(1 - b, 1 + b)).clamp(0, 1)
+        if self.aug["contrast"] > 0:
+            c = self.aug["contrast"]
+            # kontrast względem średniej jasności obrazu (jak w torchvision: szarość ITU-R 601)
+            gray_mean = (0.299 * image[0] + 0.587 * image[1] + 0.114 * image[2]).mean()
+            image = ((image - gray_mean) * np.random.uniform(1 - c, 1 + c) + gray_mean).clamp(0, 1)
         image = (image - self.mean) / self.std
         return {
             "image": image,
-            "density": torch.from_numpy(density).unsqueeze(0),  # (1, H/ds, W/ds)
+            "density": torch.from_numpy(density.copy()).unsqueeze(0),  # (1, H/ds, W/ds)
             "count": torch.tensor(len(points), dtype=torch.float32),
             "domain": self.domains[idx],
             "index": self.source_indices[idx],
