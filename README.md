@@ -15,6 +15,8 @@ Counting-crops/
 │   └── model.py      # CSRNet
 ├── configs/          # parametry eksperymentów (YAML)
 ├── train.py          # trening z checkpointami i wznawianiem
+├── evaluate.py       # MAE/RMSE łącznie, per domena i per grupa liczby kłosów
+├── make_figures.py   # rysunki do pracy (PDF + PNG) w outputs/figures/
 ├── notebooks/        # nauka, eksploracja, testy
 ├── data/             # dane lokalne - NIE trafiają do Gita
 │   └── raw/zenodo/gwhd_2021.zip
@@ -98,6 +100,21 @@ Parametry eksperymentu są w plikach `configs/*.yaml`. Wyniki trafiają do `outp
 `best.pt` (najlepsze val MAE), `config.yaml`, `subsets.json`.
 
 `configs/smoke.yaml` to tylko test działania kodu (32 obrazy) - jego wyników nie raportujemy.
+
+Augmentację zbioru uczącego wybiera pole `augmentation`: `crop_only` (sam losowy wycinek, domyślnie)
+albo `thesis_aug` (wycinek + odbicie poziome p=0,5 + jasność i kontrast ±15%). Walidacja i test są
+zawsze bez augmentacji.
+
+## Ewaluacja
+
+```powershell
+python evaluate.py --checkpoint outputs/<run>/best.pt                        # cały zbiór walidacyjny
+python evaluate.py --checkpoint outputs/<run>/best.pt --split test --allow-test  # tylko końcowa ocena
+```
+
+Wyniki w `outputs/<run>/eval_<split>/`: predykcje per obraz, MAE/RMSE (łącznie, per domena,
+per grupa liczby kłosów) i progi grup (kwantyle liczby kłosów w zbiorze uczącym).
+Zbiór testowy wymaga `--allow-test` - nie wybieramy na nim modelu ani hiperparametrów.
 
 ## Trening w Google Colab
 
