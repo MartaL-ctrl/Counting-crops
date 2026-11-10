@@ -74,11 +74,20 @@ def train_one_epoch(model, loader, optimizer, device, scale: float) -> float:
 
 
 @torch.no_grad()
-def evaluate(model, dataset, device, scale: float) -> tuple[dict[str, float], list[dict]]:
-    """Liczenie na całych obrazach (po jednym). Zwraca metryki i predykcje per obraz."""
+def evaluate(model, dataset, device, scale: float,
+             progress_every: int | None = None) -> tuple[dict[str, float], list[dict]]:
+    """Liczenie na całych obrazach (po jednym). Zwraca metryki i predykcje per obraz.
+
+    ``progress_every``: co ile obrazów wypisać postęp i szacowany czas do końca (None - nie wypisuje).
+    """
     model.eval()
     rows = []
+    start = time.time()
     for i in range(len(dataset)):
+        if progress_every and i > 0 and i % progress_every == 0:
+            left = (time.time() - start) / i * (len(dataset) - i)
+            print(f"{time.strftime('%H:%M')}  {i}/{len(dataset)} obrazów, zostało ok. {left / 60:.0f} min",
+                  flush=True)
         s = dataset[i]
         pred = model(s["image"].unsqueeze(0).to(device)).sum().item() / scale
         rows.append({"index": s["index"], "domain": s["domain"], "true_count": s["count"].item(),

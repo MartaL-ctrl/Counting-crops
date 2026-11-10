@@ -35,6 +35,7 @@ from src.model import CSRNet
 from src.utils import count_metrics, load_checkpoint
 from train import evaluate, resolve, write_csv
 
+LOCAL_DATA_ZIP = "data/raw/zenodo/gwhd_2021.zip"
 METRIC_FIELDS = ["scope", "name", "n_images", "mae", "rmse", "mean_error", "mean_true_count"]
 
 
@@ -90,6 +91,9 @@ def main() -> None:
     ckpt = load_checkpoint(ckpt_path, map_location=device)
     cfg = ckpt["config"]
     data_zip = resolve(args.data_zip or cfg["data_zip"])
+    if not args.data_zip and not data_zip.exists():  # checkpoint z Colaba ma ścieżkę /content/...
+        data_zip = resolve(LOCAL_DATA_ZIP)
+        print("data_zip z checkpointu niedostępny - używam", data_zip)
     scale = float(cfg["density_scale"])
     out_dir = resolve(args.out) if args.out else ckpt_path.parent / f"eval_{args.split}"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -108,7 +112,7 @@ def main() -> None:
     print(f"Urządzenie: {device} | {args.split}: {len(dataset)} obrazów | checkpoint: epoka {ckpt['epoch']}")
     print("Progi grup (kwantyle train):", ", ".join(f"{e:g}" for e in edges), "->", labels)
 
-    _, rows = evaluate(model, dataset, device, scale)
+    _, rows = evaluate(model, dataset, device, scale, progress_every=50)
     names = dict(zip(dataset.source_indices, dataset.image_names))
     for r in rows:
         r["image_name"] = names[r["index"]]
@@ -123,7 +127,7 @@ def main() -> None:
         "edges": edges, "labels": labels, "rule": "prog[g-1] < true_count <= prog[g]",
         "source": "kwantyle liczby kłosów w całym zbiorze uczącym", "n_groups": args.n_groups,
         "checkpoint": str(ckpt_path), "epoch": ckpt["epoch"], "split": args.split, "subset": args.subset,
-    }, indent=2, ensure_ascii=False))
+    }, indent=2, ensure_ascii=False), encoding="utf-8")
 
     for m in metrics:
         print(f"{m['scope']:>6} | {m['name']:<14} | n={m['n_images']:5d} | MAE {m['mae']:7.2f} | "

@@ -288,15 +288,18 @@ def fig_learning_curves(runs: list[dict], tag: str) -> None:
         h = r["history"]
         axes[0].plot(h["epoch"], h["train_loss"], color=color, linewidth=1.5, label=r["name"])
         ev = h.dropna(subset=["val_mae"])
-        axes[1].plot(ev["epoch"], ev["val_mae"], "o-", color=color, linewidth=1.5, markersize=4, label=r["name"])
         best = ev.loc[ev["val_mae"].idxmin()]
-        axes[1].annotate(pl(best["val_mae"], 2), (best["epoch"], best["val_mae"]), textcoords="offset points",
-                         xytext=(0, -12), ha="center", fontsize=7, color=INK)
+        label = f"{r['name']} (min. {pl(best['val_mae'], 2)}, epoka {int(best['epoch'])})"
+        axes[1].plot(ev["epoch"], ev["val_mae"], "o-", color=color, linewidth=1.5, markersize=4, label=label)
+        # najlepsza epoka (wybrany checkpoint) - pusty pierścień wokół punktu
+        axes[1].plot(best["epoch"], best["val_mae"], "o", markersize=10, markerfacecolor="none",
+                     markeredgecolor=color, markeredgewidth=1.5)
     axes[0].set(title="strata treningowa (MSE)", xlabel="epoka", yscale="log")
     axes[1].set(title="MAE na zbiorze walidacyjnym", xlabel="epoka", ylabel="MAE [kłosy]")
-    if len(runs) > 1:
-        axes[1].legend(fontsize=7)
     fig.tight_layout()
+    if len(runs) > 1:  # wspólna legenda pod wykresami - w polu wykresu zasłaniała punkty
+        handles, labels = axes[1].get_legend_handles_labels()
+        fig.legend(handles, labels, fontsize=7, ncol=len(runs), loc="upper center", bbox_to_anchor=(0.5, 0.0))
     save(fig, f"wyniki_krzywe_uczenia{tag}")
 
 
