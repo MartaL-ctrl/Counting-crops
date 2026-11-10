@@ -1,0 +1,35 @@
+# Pełny trening CSRNet w Google Colab (T4): augmentacja geom_scale - skala x0,6-1,4, odbicie, obrót o 90°; ok. 6,5 h.
+# Seria eksperymentów "jedna zmiana naraz": ta konfiguracja różni się od
+# colab_csrnet_crop_only.yaml WYŁĄCZNIE polem opisanym wyżej (i run_name).
+# Wariant wybieramy na podstawie walidacji (najlepsze val MAE i średnia z 5 ostatnich
+# ewaluacji - summarize_runs.py), nigdy na podstawie testu.
+# Uruchamiany z notebooks/colab_train.ipynb (CONFIG = "configs/colab_csrnet_geom_scale.yaml").
+
+run_name: csrnet_geom_scale
+seed: 42
+
+data_zip: /content/data/gwhd_2021.zip
+output_dir: /content/drive/MyDrive/counting-crops/outputs
+
+# Mapy gęstości
+sigma: 10.0          # [px] hipoteza; ewentualna zmiana tylko na podstawie walidacji
+downsample: 8
+density_scale: 100.0
+kernel: fixed        # fixed (stała sigma) | box (sigma z wymiarów ramki, box_sigma_factor)
+box_sigma_factor: 0.25
+
+# Dane
+crop_size: 256
+augmentation: geom_scale  # crop_only | thesis_aug | geom_scale (src/dataset.py: AUGMENTATION_PROFILES); tylko train
+n_train: null        # wszystkie 3657 obrazów uczących
+n_val: null          # wszystkie 1476 obrazów walidacyjnych
+eval_train: false    # MAE na 3657 pełnych obrazach uczących trwałoby dłużej niż walidacja
+
+# Trening
+epochs: 60
+eval_every: 2
+batch_size: 4
+lr: 1.0e-5
+lr_schedule: constant  # constant | cosine
+weight_decay: 0.0
+num_workers: 2

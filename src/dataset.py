@@ -13,7 +13,7 @@ import torch
 from PIL import Image
 from torch.utils.data import Dataset
 
-from src.density import boxes_to_points, clip_boxes, density_map, downsample_density
+from src.density import box_sigmas, boxes_to_points, clip_boxes, density_map, downsample_density
 
 # Statystyki ImageNet - wymagane, bo CSRNet używa wag VGG16 wytrenowanych na ImageNet.
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
@@ -23,13 +23,20 @@ ZIP_ROOT = "gwhd_2021/"
 SPLIT_CSV = {"train": "competition_train.csv", "validation": "competition_val.csv", "test": "competition_test.csv"}
 IMAGE_SIZE = 1024  # wszystkie obrazy GWHD 2021 mają 1024x1024 (sprawdzone dla 6515 plików)
 
-# Profile augmentacji stosowane PO losowym wycinku (wycinek ustawia osobno crop_size).
-# hflip_p - prawdopodobieństwo odbicia w poziomie; brightness/contrast - maksymalna względna
-# zmiana (0.15 = mnożnik losowany jednostajnie z [0.85, 1.15]).
+# Profile augmentacji zbioru uczącego (wycinek ustawia osobno crop_size).
+# scale       - (min, max): wycinek w losowej skali s z [min, max] (rozkład jednostajny), tzn.
+#               kłosy pomniejszone (s < 1) albo powiększone (s > 1); None = bez skalowania,
+# hflip_p     - prawdopodobieństwo odbicia w poziomie,
+# rot90       - obrót wycinka o losową wielokrotność 90° (razem z odbiciem: 8 orientacji),
+# brightness/contrast - maksymalna względna zmiana (0.15 = mnożnik z [0.85, 1.15]).
+# Zakres skali geom_scale: mediany rozmiaru kłosa w 18 domenach zbioru uczącego wynoszą
+# 0,75-1,72 mediany całego zbioru (stosunek skrajnych 2,3); 1,4 / 0,6 = 2,3.
 AUGMENTATION_PROFILES = {
-    "crop_only": {"hflip_p": 0.0, "brightness": 0.0, "contrast": 0.0},
-    "thesis_aug": {"hflip_p": 0.5, "brightness": 0.15, "contrast": 0.15},
+    "crop_only": {"scale": None, "hflip_p": 0.0, "rot90": False, "brightness": 0.0, "contrast": 0.0},
+    "thesis_aug": {"scale": None, "hflip_p": 0.5, "rot90": False, "brightness": 0.15, "contrast": 0.15},
+    "geom_scale": {"scale": (0.6, 1.4), "hflip_p": 0.5, "rot90": True, "brightness": 0.0, "contrast": 0.0},
 }
+KERNELS = ("fixed", "box")  # stała sigma | sigma z wymiarów ramki (box_sigmas)
 
 # W CSV trzy nazwy plików występują dwukrotnie (w dwóch domenach, z różnymi ramkami), a w ZIP
 # są trzy pliki, do których nie odwołuje się żaden wiersz. Przypisanie ustalono wzrokowo
@@ -58,7 +65,8 @@ def load_split(zip_path: str | Path, split: str) -> pd.DataFrame:
 
     Kolumny: ``image_name`` (plik w ``gwhd_2021/images/``, po poprawkach z ``NAME_FIXES``),
     ``domain``, ``boxes`` (surowe ramki xyxy), ``n_boxes_raw``, ``points`` (środki ramek
-    przyciętych do obrazu) i ``count`` (liczba kłosów = liczba punktów).
+    przyciętych do obrazu), ``sizes`` (szerokość i wysokość tych samych ramek, ``(N, 2)``,
+    w kolejności punktów) i ``count`` (liczba kłosów = liczba punktów).
     """
     with zipfile.ZipFile(zip_path) as zf, zf.open(ZIP_ROOT + SPLIT_CSV[split]) as f:
         df = pd.read_csv(f)
@@ -67,7 +75,9 @@ def load_split(zip_path: str | Path, split: str) -> pd.DataFrame:
         raise ValueError(f"powtórzone nazwy obrazów w {split}: {df.loc[df.image_name.duplicated(), 'image_name'].tolist()}")
     df["boxes"] = df["BoxesString"].map(parse_boxes)
     df["n_boxes_raw"] = df["boxes"].map(len)
-    df["points"] = [boxes_to_points(clip_boxes(b, IMAGE_SIZE, IMAGE_SIZE)) for b in df["boxes"]]
+    clipped = [clip_boxes(b, IMAGE_SIZE, IMAGE_SIZE) for b in df["boxes"]]
+    df["points"] = [boxes_to_points(b) for b in clipped]
+    df["sizes"] = [np.stack([b[:, 2] - b[:, 0], b[:, 3] - b[:, 1]], axis=1) for b in clipped]
     df["count"] = df["points"].map(len)
     return df.drop(columns="BoxesString")
 
@@ -75,14 +85,25 @@ def load_split(zip_path: str | Path, split: str) -> pd.DataFrame:
 class GWHDDensityDataset(Dataset):
     """Próbki: obraz (znormalizowany tensor), mapa gęstości i liczba kłosów.
 
-    Tryb treningowy (``crop_size`` podany): losowy wycinek ``crop_size x crop_size``,
-    a potem przekształcenia z profilu ``augmentation`` (``AUGMENTATION_PROFILES``).
-    Tryb ewaluacji (``crop_size=None``): cały obraz 1024x1024, bez augmentacji.
+    Tryb treningowy (``crop_size`` podany): losowy wycinek ``crop_size x crop_size``
+    (opcjonalnie z losową skalą), a potem przekształcenia z profilu ``augmentation``
+    (``AUGMENTATION_PROFILES``). Tryb ewaluacji (``crop_size=None``): cały obraz 1024x1024,
+    bez augmentacji.
 
-    Odbicie w poziomie jest wykonywane na obrazie i na gotowej mapie gęstości. Jest to
-    równoważne liczeniu mapy z odbitych punktów (jądro Gaussa jest symetryczne), a nie
-    wymaga przeliczania współrzędnych na granicach pikseli. Jasność i kontrast zmieniają
-    tylko obraz.
+    Przy skalowaniu współrzędne punktów i wymiary ramek są mnożone przez ten sam
+    współczynnik co obraz, a mapa jest liczona dopiero z przeskalowanych punktów, więc jej
+    suma nadal równa się liczbie kłosów. Przy stałej sigmie jądro ma tę samą szerokość
+    w pikselach niezależnie od skali; przy jądrze z ramek rośnie i maleje razem z kłosem.
+
+    Odbicie i obrót są wykonywane na obrazie i na gotowej mapie gęstości. Jest to
+    równoważne liczeniu mapy z przekształconych punktów (jądro Gaussa jest symetryczne
+    względem osi obrazu, a obrót o 90° zamienia sigmę poziomą z pionową tak samo jak
+    zamienia boki ramki), a nie wymaga przeliczania współrzędnych na granicach pikseli.
+    Jasność i kontrast zmieniają tylko obraz.
+
+    Jądro (``kernel``): ``"fixed"`` - stała ``sigma`` dla każdego kłosa; ``"box"`` - sigma
+    pozioma i pionowa z wymiarów ramki (``box_sigmas``, ``box_sigma_factor``), wtedy
+    ``sigma`` nie jest używana.
 
     Mapa gęstości jest liczona z punktów leżących w wycinku, więc jej suma jest
     dokładnie równa liczbie kłosów w wycinku (``count``). Mapa ma rozdzielczość
@@ -102,6 +123,8 @@ class GWHDDensityDataset(Dataset):
         downsample: int = 8,
         indices: Sequence[int] | None = None,
         augmentation: str = "crop_only",
+        kernel: str = "fixed",
+        box_sigma_factor: float = 0.25,
     ) -> None:
         if crop_size is not None and crop_size % downsample:
             raise ValueError(f"crop_size={crop_size} musi być podzielny przez downsample={downsample}")
@@ -109,6 +132,11 @@ class GWHDDensityDataset(Dataset):
             raise ValueError(f"nieznany profil augmentacji {augmentation!r}; dostępne: {list(AUGMENTATION_PROFILES)}")
         if crop_size is None and augmentation != "crop_only":
             raise ValueError("augmentacja tylko w trybie treningowym (crop_size podany); ewaluacja: crop_only")
+        if kernel not in KERNELS:
+            raise ValueError(f"nieznane jądro {kernel!r}; dostępne: {list(KERNELS)}")
+        scale = AUGMENTATION_PROFILES[augmentation]["scale"]
+        if scale is not None and round(crop_size / scale[0]) > IMAGE_SIZE:
+            raise ValueError(f"wycinek {crop_size} przy skali x{scale[0]} wymaga obszaru większego niż obraz")
         df = load_split(zip_path, split)
         # numery obrazów w całym podziale (stabilne identyfikatory do zapisu predykcji)
         self.source_indices: list[int] = list(indices) if indices is not None else list(range(len(df)))
@@ -117,8 +145,11 @@ class GWHDDensityDataset(Dataset):
         self.zip_path = str(zip_path)
         self.image_names: list[str] = df["image_name"].tolist()
         self.points: list[np.ndarray] = df["points"].tolist()
+        self.sizes: list[np.ndarray] = df["sizes"].tolist()
         self.domains: list[str] = df["domain"].tolist()
         self.sigma = sigma
+        self.kernel = kernel
+        self.box_sigma_factor = box_sigma_factor
         self.crop_size = crop_size
         self.downsample = downsample
         self.augmentation = augmentation
@@ -148,31 +179,46 @@ class GWHDDensityDataset(Dataset):
         h, w = img.shape[:2]
         if (h, w) != (IMAGE_SIZE, IMAGE_SIZE):
             raise ValueError(f"{self.image_names[idx]}: rozmiar {(h, w)}, oczekiwano {IMAGE_SIZE}x{IMAGE_SIZE}")
-        points = self.points[idx]
+        points, sizes = self.points[idx], self.sizes[idx]
 
         if self.crop_size is not None:
             cs = self.crop_size
+            # Skala s: z oryginału wycinamy obszar region = cs / s i skalujemy go do cs x cs.
+            # Daje to ten sam wynik co przeskalowanie całego obrazu i wycięcie cs x cs,
+            # ale skaluje tylko wycinek (ok. 2x szybciej na próbkę).
+            region = cs
+            if self.aug["scale"] is not None:
+                region = int(round(cs / np.random.uniform(*self.aug["scale"])))
             # np.random (a nie torch) - ziarno w procesach roboczych ustawia seed_worker
-            top = np.random.randint(0, h - cs + 1)
-            left = np.random.randint(0, w - cs + 1)
-            img = img[top:top + cs, left:left + cs]
+            top = np.random.randint(0, h - region + 1)
+            left = np.random.randint(0, w - region + 1)
+            img = img[top:top + region, left:left + region]
             inside = (
-                (points[:, 0] >= left) & (points[:, 0] < left + cs)
-                & (points[:, 1] >= top) & (points[:, 1] < top + cs)
+                (points[:, 0] >= left) & (points[:, 0] < left + region)
+                & (points[:, 1] >= top) & (points[:, 1] < top + region)
             )
             points = points[inside] - np.array([left, top], dtype=np.float32)
+            sizes = sizes[inside]
+            if region != cs:
+                img = np.asarray(Image.fromarray(img).resize((cs, cs), Image.BILINEAR))
+                points, sizes = points * (cs / region), sizes * (cs / region)
             h = w = cs
 
         if h % self.downsample or w % self.downsample:
             raise ValueError(f"rozmiar obrazu {(h, w)} niepodzielny przez {self.downsample}")
 
-        density = downsample_density(density_map(points, h, w, self.sigma), self.downsample)
+        sigmas = box_sigmas(sizes, self.box_sigma_factor) if self.kernel == "box" else None
+        density = downsample_density(density_map(points, h, w, self.sigma, sigmas), self.downsample)
 
         # Losowania tylko dla włączonych przekształceń: crop_only zużywa liczby losowe tak
         # samo jak kod sprzed dodania profili, więc daje identyczne wycinki.
         if self.aug["hflip_p"] > 0 and np.random.rand() < self.aug["hflip_p"]:
             img = img[:, ::-1]
             density = density[:, ::-1]  # mapa (H/ds, W/ds): odbicie po szerokości
+        if self.aug["rot90"]:
+            k = np.random.randint(4)  # obraz (H, W, 3) i mapa (H, W): obrót w osiach 0-1
+            img = np.rot90(img, k)
+            density = np.rot90(density, k)
 
         image = torch.from_numpy(img.copy()).permute(2, 0, 1).float() / 255.0  # (3, H, W), 0..1
         if self.aug["brightness"] > 0:

@@ -102,7 +102,8 @@ def main() -> None:
     if args.subset:
         indices = json.loads(resolve(args.subset).read_text())["validation"]
     dataset = GWHDDensityDataset(data_zip, args.split, sigma=cfg["sigma"], crop_size=None,
-                                 downsample=cfg["downsample"], indices=indices)
+                                 downsample=cfg["downsample"], indices=indices, kernel=cfg.get("kernel", "fixed"),
+                                 box_sigma_factor=cfg.get("box_sigma_factor", 0.25))
 
     model = CSRNet(pretrained=False).to(device)  # wagi i tak z checkpointu - bez pobierania VGG16
     model.load_state_dict(ckpt["model"])

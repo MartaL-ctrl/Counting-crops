@@ -17,6 +17,7 @@ Counting-crops/
 ├── train.py          # trening z checkpointami i wznawianiem
 ├── evaluate.py       # MAE/RMSE łącznie, per domena i per grupa liczby kłosów
 ├── make_figures.py   # rysunki do pracy (PDF + PNG) w outputs/figures/
+├── summarize_runs.py # zestawienie treningów: najlepsze val MAE i średnia z 5 ostatnich ewaluacji
 ├── notebooks/        # nauka, eksploracja, testy
 ├── data/             # dane lokalne - NIE trafiają do Gita
 │   └── raw/zenodo/gwhd_2021.zip
@@ -101,9 +102,20 @@ Parametry eksperymentu są w plikach `configs/*.yaml`. Wyniki trafiają do `outp
 
 `configs/smoke.yaml` to tylko test działania kodu (32 obrazy) - jego wyników nie raportujemy.
 
-Augmentację zbioru uczącego wybiera pole `augmentation`: `crop_only` (sam losowy wycinek, domyślnie)
-albo `thesis_aug` (wycinek + odbicie poziome p=0,5 + jasność i kontrast ±15%). Walidacja i test są
-zawsze bez augmentacji.
+Augmentację zbioru uczącego wybiera pole `augmentation`: `crop_only` (sam losowy wycinek, domyślnie),
+`thesis_aug` (wycinek + odbicie poziome p=0,5 + jasność i kontrast ±15%) albo `geom_scale` (wycinek
+w losowej skali ×0,6–1,4 + odbicie + obrót o wielokrotność 90°). Walidacja i test są zawsze bez
+augmentacji.
+
+Inne pola eksperymentów (brak pola = wartość domyślna, czyli zachowanie wcześniejszych treningów):
+`kernel` - `fixed` (stała `sigma`, domyślnie) albo `box` (sigma pozioma i pionowa = `box_sigma_factor`
+× szerokość / wysokość ramki); `lr_schedule` - `constant` (domyślnie) albo `cosine`; `crop_size`.
+
+Zestawienie wszystkich treningów (poza `smoke*`) w `outputs/runs_summary.csv`:
+
+```powershell
+python summarize_runs.py
+```
 
 ## Ewaluacja
 

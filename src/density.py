@@ -1,4 +1,4 @@
-"""Punkty obiektów i mapy gęstości (jądro Gaussa o stałej sigmie).
+"""Punkty obiektów i mapy gęstości (jądro Gaussa o stałej sigmie albo dopasowane do ramki).
 
 Konwencje:
 - ramki w formacie oryginalnego GWHD 2021 (Zenodo): ``[x_min, y_min, x_max, y_max]`` w pikselach,
@@ -45,9 +45,38 @@ def gaussian_kernel(sigma: float, truncate: float = 3.0) -> np.ndarray:
     return (kernel / kernel.sum()).astype(np.float32)
 
 
-def density_map(points: np.ndarray, height: int, width: int, sigma: float) -> np.ndarray:
+def anisotropic_gaussian_kernel(sigma_x: float, sigma_y: float, truncate: float = 3.0) -> np.ndarray:
+    """Jądro Gaussa o osobnych sigmach w poziomie i pionie (osie jądra = osie obrazu).
+
+    Wymiary ``(2*ry + 1, 2*rx + 1)``, gdzie ``r = ceil(truncate * sigma)``; suma = 1.
+    """
+    if sigma_x <= 0 or sigma_y <= 0:
+        raise ValueError(f"sigmy muszą być dodatnie, podano {sigma_x}, {sigma_y}")
+    rx, ry = int(np.ceil(truncate * sigma_x)), int(np.ceil(truncate * sigma_y))
+    gx = np.exp(-(np.arange(-rx, rx + 1, dtype=np.float64) ** 2) / (2 * sigma_x**2))
+    gy = np.exp(-(np.arange(-ry, ry + 1, dtype=np.float64) ** 2) / (2 * sigma_y**2))
+    kernel = np.outer(gy, gx)
+    return (kernel / kernel.sum()).astype(np.float32)
+
+
+def box_sigmas(sizes: np.ndarray, factor: float, min_sigma: float = 2.0) -> np.ndarray:
+    """Sigmy ``(N, 2)`` ``[sigma_x, sigma_y]`` z wymiarów ramek ``(N, 2)`` ``[szerokość, wysokość]``.
+
+    ``sigma = factor * bok`` (dolne ograniczenie ``min_sigma``). Dla ``factor = 0.25`` ramka
+    sięga ±2 sigma od środka, czyli zawiera ok. 91% masy jądra (0,954 w każdej osi).
+    Ramki są równoległe do osi obrazu, więc kłos leżący poziomo (szeroka ramka) dostaje
+    plamkę wydłużoną w poziomie; ukośnego ułożenia ramka nie opisuje.
+    """
+    sizes = np.asarray(sizes, dtype=np.float32).reshape(-1, 2)
+    return np.maximum(sizes * factor, min_sigma)
+
+
+def density_map(points: np.ndarray, height: int, width: int, sigma: float,
+                sigmas: np.ndarray | None = None) -> np.ndarray:
     """Tworzy mapę gęstości ``(height, width)``, w której suma = liczba punktów.
 
+    - ``sigmas`` (``(N, 2)``, z ``box_sigmas``): osobne jądro dla każdego punktu, ``sigma``
+      jest wtedy ignorowana. Bez ``sigmas``: jedno jądro o stałej ``sigma`` dla wszystkich.
     - Punkty poza obrazem są pomijane (nie wnoszą nic do mapy).
     - Jądro przycięte krawędzią obrazu jest ponownie normalizowane do sumy 1,
       więc kłos przy krawędzi liczy się jako cały (decyzja do opisania w pracy).
@@ -56,16 +85,19 @@ def density_map(points: np.ndarray, height: int, width: int, sigma: float) -> np
     points = np.asarray(points, dtype=np.float32).reshape(-1, 2)
     if len(points) == 0:
         return density
+    if sigmas is not None and len(sigmas) != len(points):
+        raise ValueError(f"{len(sigmas)} par sigm dla {len(points)} punktów")
 
-    kernel = gaussian_kernel(sigma)
-    r = kernel.shape[0] // 2
-    for x, y in points:
+    fixed = gaussian_kernel(sigma) if sigmas is None else None
+    for i, (x, y) in enumerate(points):
         if not (0 <= x < width and 0 <= y < height):
             continue
+        kernel = fixed if sigmas is None else anisotropic_gaussian_kernel(*sigmas[i])
+        ry, rx = kernel.shape[0] // 2, kernel.shape[1] // 2
         col, row = int(x), int(y)
-        top, bottom = max(row - r, 0), min(row + r + 1, height)
-        left, right = max(col - r, 0), min(col + r + 1, width)
-        piece = kernel[top - row + r:bottom - row + r, left - col + r:right - col + r]
+        top, bottom = max(row - ry, 0), min(row + ry + 1, height)
+        left, right = max(col - rx, 0), min(col + rx + 1, width)
+        piece = kernel[top - row + ry:bottom - row + ry, left - col + rx:right - col + rx]
         density[top:bottom, left:right] += piece / piece.sum()
     return density
 

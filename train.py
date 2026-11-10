@@ -40,7 +40,8 @@ from src.utils import (
 )
 
 ROOT = Path(__file__).resolve().parent
-HISTORY_FIELDS = ["epoch", "train_loss", "train_mae", "val_mae", "val_rmse", "epoch_time_s"]
+HISTORY_FIELDS = ["epoch", "lr", "train_loss", "train_mae", "val_mae", "val_rmse", "epoch_time_s"]
+LR_SCHEDULES = ("constant", "cosine")
 
 
 def resolve(path: str | Path) -> Path:
@@ -132,7 +133,8 @@ def main() -> None:
     val_idx = pick_indices(len(load_split(data_zip, "validation")), cfg["n_val"], rng)
     (out_dir / "subsets.json").write_text(json.dumps({"train": train_idx, "validation": val_idx}))
 
-    common = {"zip_path": data_zip, "sigma": cfg["sigma"], "downsample": cfg["downsample"]}
+    common = {"zip_path": data_zip, "sigma": cfg["sigma"], "downsample": cfg["downsample"],
+              "kernel": cfg.get("kernel", "fixed"), "box_sigma_factor": cfg.get("box_sigma_factor", 0.25)}
     # brak klucza w starszych konfiguracjach = dotychczasowe zachowanie (sam losowy wycinek)
     train_ds = GWHDDensityDataset(split="train", crop_size=cfg["crop_size"], indices=train_idx,
                                   augmentation=cfg.get("augmentation", "crop_only"), **common)
@@ -147,6 +149,13 @@ def main() -> None:
     # --- model ---
     model = CSRNet(pretrained=True).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg["lr"], weight_decay=cfg["weight_decay"])
+    # constant: lr bez zmian; cosine: lr maleje po cosinusie od cfg["lr"] (epoka 1) prawie do 0 (ostatnia)
+    # (Loshchilov i Hutter, SGDR, 2017 - wariant bez restartów); krok harmonogramu po każdej epoce
+    lr_schedule = cfg.get("lr_schedule", "constant")
+    if lr_schedule not in LR_SCHEDULES:
+        raise ValueError(f"nieznany lr_schedule {lr_schedule!r}; dostępne: {list(LR_SCHEDULES)}")
+    scheduler = (torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["epochs"])
+                 if lr_schedule == "cosine" else None)
 
     start_epoch, best_mae = 1, math.inf
     history = []
@@ -156,6 +165,8 @@ def main() -> None:
             print("UWAGA: konfiguracja różni się od zapisanej w checkpoincie")
         model.load_state_dict(ckpt["model"])
         optimizer.load_state_dict(ckpt["optimizer"])
+        if scheduler is not None:
+            scheduler.load_state_dict(ckpt["scheduler"])
         start_epoch, best_mae = ckpt["epoch"] + 1, ckpt["best_val_mae"]
         set_rng_state(ckpt["rng"])
         loader_gen.set_state(ckpt["loader_generator"].cpu())
@@ -170,8 +181,11 @@ def main() -> None:
 
     for epoch in range(start_epoch, cfg["epochs"] + 1):
         t0 = time.time()
+        lr = optimizer.param_groups[0]["lr"]  # lr użyty w tej epoce
         train_loss = train_one_epoch(model, loader, optimizer, device, scale)
-        row = {"epoch": epoch, "train_loss": train_loss, "train_mae": "", "val_mae": "", "val_rmse": ""}
+        if scheduler is not None:
+            scheduler.step()
+        row = {"epoch": epoch, "lr": lr, "train_loss": train_loss, "train_mae": "", "val_mae": "", "val_rmse": ""}
 
         val_metrics = None
         if epoch % cfg["eval_every"] == 0 or epoch == cfg["epochs"]:
@@ -186,6 +200,7 @@ def main() -> None:
         state = {
             "model": model.state_dict(),
             "optimizer": optimizer.state_dict(),
+            "scheduler": scheduler.state_dict() if scheduler is not None else None,
             "epoch": epoch,
             "best_val_mae": best_mae,
             "val_metrics": val_metrics,
