@@ -310,7 +310,7 @@ def fig_scatter(runs: list[dict], split: str, tag: str) -> None:
         return
     fig, axes = plt.subplots(1, len(runs), figsize=(min(WIDTH, 3.1 * len(runs)), 3.1), squeeze=False)
     lim = max(max(r["pred"]["true_count"].max(), r["pred"]["pred_count"].max()) for r in runs) * 1.05
-    for ax, r, color in zip(axes[0], runs, SERIES):
+    for k, (ax, r, color) in enumerate(zip(axes[0], runs, SERIES)):
         p = r["pred"]
         m = r["metrics"].query("scope == 'all'").iloc[0]
         ax.plot([0, lim], [0, lim], color=MUTED, linestyle="--", linewidth=1)
@@ -318,8 +318,10 @@ def fig_scatter(runs: list[dict], split: str, tag: str) -> None:
         for e in r["groups"]["edges"]:
             ax.axvline(e + 0.5, color=GRID, linewidth=1, zorder=0)
         ax.set(xlim=(0, lim), ylim=(0, lim), aspect="equal", xlabel="prawdziwa liczba kłosów",
-               ylabel="przewidziana liczba kłosów")
-        ax.set_title(f"{r['name']} (zbiór {SPLIT_PL[split]}, n={len(p)})\nMAE {pl(m['mae'], 2)}, RMSE {pl(m['rmse'], 2)}", fontsize=8)
+               ylabel="przewidziana liczba kłosów" if k == 0 else None)
+        # krótki tytuł - przy kilku panelach dłuższe nachodziły na siebie; podzbiór i n w nadtytule
+        ax.set_title(f"{r['name']}\nMAE {pl(m['mae'], 2)}, RMSE {pl(m['rmse'], 2)}", fontsize=8)
+    fig.suptitle(f"zbiór {SPLIT_PL[split]}, n = {len(runs[0]['pred'])} obrazów", fontsize=9)
     fig.tight_layout()
     save(fig, f"wyniki_rozrzut_{split}{tag}")
 
