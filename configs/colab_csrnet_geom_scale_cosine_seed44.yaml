@@ -1,0 +1,29 @@
+# Powtórzenie colab_csrnet_geom_scale_cosine.yaml z innym ziarnem losowości (seed 44), aby ocenić rozrzut wyników między treningami.
+# Różni się od colab_csrnet_geom_scale_cosine.yaml WYŁĄCZNIE polami seed i run_name. Wynik raportujemy jako średnią ± odchylenie z 3 seedów (42, 43, 44).
+# Uruchamiany z notebooks/colab_train.ipynb (CONFIG = "configs/colab_csrnet_geom_scale_cosine_seed44.yaml").
+
+run_name: csrnet_geom_scale_cosine_seed44
+seed: 44
+
+data_zip: /content/data/gwhd_2021.zip
+output_dir: /content/drive/MyDrive/counting-crops/outputs
+
+sigma: 10.0          # [px] hipoteza; ewentualna zmiana tylko na podstawie walidacji
+downsample: 8
+density_scale: 100.0
+kernel: fixed        # fixed (stała sigma) | box (sigma z wymiarów ramki, box_sigma_factor)
+box_sigma_factor: 0.25
+
+crop_size: 256
+augmentation: geom_scale  # crop_only | thesis_aug | geom_scale (src/dataset.py: AUGMENTATION_PROFILES); tylko train
+n_train: null        # wszystkie 3657 obrazów uczących
+n_val: null          # wszystkie 1476 obrazów walidacyjnych
+eval_train: false    # MAE na 3657 pełnych obrazach uczących trwałoby dłużej niż walidacja
+
+epochs: 60
+eval_every: 2
+batch_size: 4
+lr: 1.0e-5
+lr_schedule: cosine    # constant | cosine
+weight_decay: 0.0
+num_workers: 2
